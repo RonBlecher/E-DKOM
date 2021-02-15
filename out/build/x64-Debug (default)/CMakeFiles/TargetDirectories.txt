@@ -1,0 +1,2 @@
+C:/Users/RGORSB/Documents/Visual Studio 2019/E-DKOM/out/build/x64-Debug (default)/CMakeFiles/edit_cache.dir
+C:/Users/RGORSB/Documents/Visual Studio 2019/E-DKOM/out/build/x64-Debug (default)/CMakeFiles/rebuild_cache.dir
